@@ -134,3 +134,15 @@ INSERT INTO activities ( name ) VALUES
     ( 'Yoga' ),
     ( 'Pilates' )
 ON CONFLICT ( name ) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS activities (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    dias TEXT[] NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    instructor_id INTEGER NOT NULL REFERENCES instructors(id),
+    estado VARCHAR(10) NOT NULL DEFAULT 'ACTIVO' CHECK (estado IN ('ACTIVO', 'INACTIVO')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_rango_horario CHECK (hora_inicio < hora_fin)
+);
