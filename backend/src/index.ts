@@ -11,6 +11,8 @@ import type { AvailabilityDTO } from './types/availability.types';
 import { ListAssignmentService } from './services/list.assignment.service';
 import { UpdateAssignmentService } from './services/update.assignment.service';
 import type { ClientRosterItemDTO } from './types/assignment.types';
+import { ActivityService } from './services/activity.service';
+import type { DayOfWeek, ActivityStatus } from './types/activity.types';
 
 async function promptAdminRegister(
   rl: readline.Interface,
@@ -232,7 +234,7 @@ function printClientsRoster(clients: ClientRosterItemDTO[]) {
 
     console.log(
       `  [Cliente ID: ${c.clientId}] ${c.name} ${c.lastname} (DNI: ${c.dni}) | Estado: ${badge}\n` +
-        `      Nutricionista: ${nutLabel} | Instructor: ${instLabel}`
+      `      Nutricionista: ${nutLabel} | Instructor: ${instLabel}`
     );
   });
 }
@@ -326,7 +328,7 @@ async function promptAdminAssignments(
     instructorId,
   });
 
-  console.log(`\n✅ ${res.message}`);
+  console.log(`\n ${res.message}`);
   printClientsRoster([res.client]);
 }
 
@@ -339,6 +341,7 @@ async function main() {
   const listAvailabilityService = new ListAvailabilityService();
   const listAssignmentService = new ListAssignmentService();
   const updateAssignmentService = new UpdateAssignmentService();
+  const activityService = new ActivityService();
   let currentUser: UserSessionDTO | null = null;
   let running = true;
 
@@ -358,7 +361,7 @@ async function main() {
             const password = (await rl.question('Contraseña: ')).trim();
             currentUser = await loginService.login({ email, password });
             console.log(
-              `\n🔓 Sesión iniciada: ${currentUser.name} ${currentUser.lastname} [${currentUser.role}]`
+              `\n Sesión iniciada: ${currentUser.name} ${currentUser.lastname} [${currentUser.role}]`
             );
           } else if (opt === '0') {
             running = false;
@@ -366,7 +369,7 @@ async function main() {
             console.log('Opción inválida.');
           }
         } catch (err: any) {
-          console.error('\n❌', err.message);
+          console.error('\n', err.message);
         }
       } else {
         console.log(`\n--- MENÚ ${currentUser.role} (${currentUser.email}) ---`);
@@ -380,6 +383,7 @@ async function main() {
           console.log('1. Registrar nuevo usuario (CLIENTE / NUTRICIONISTA / INSTRUCTOR / ADMINISTRADOR)');
           console.log('2. Gestionar disponibilidad horaria de profesionales');
           console.log('3. Gestionar asignación de Nutricionista e Instructor a clientes');
+          console.log('4. Gestionar actividades (crear / listar)');
         }
         console.log('9. Cerrar sesión');
 
@@ -387,7 +391,7 @@ async function main() {
 
         try {
           if (opt === '9') {
-            console.log(`\n🔒 Sesión cerrada (${currentUser.email}).`);
+            console.log(`\n Sesión cerrada (${currentUser.email}).`);
             currentUser = null;
           } else if (opt === '1' && currentUser.role === 'ADMINISTRADOR') {
             await promptAdminRegister(rl, registerService, currentUser);
@@ -406,6 +410,8 @@ async function main() {
               updateAssignmentService,
               currentUser
             );
+          } else if (opt === '4' && currentUser.role === 'ADMINISTRADOR') {
+            await promptAdminActivities(rl, activityService, listAssignmentService, currentUser);
           } else if (
             opt === '1' &&
             (currentUser.role === 'NUTRICIONISTA' || currentUser.role === 'INSTRUCTOR')
@@ -414,12 +420,12 @@ async function main() {
             console.log('\n=== MI CARTERA DE CLIENTES ASIGNADOS ===');
             printClientsRoster(portfolio);
           } else if (opt === '1') {
-            console.log('ℹ️  Funcionalidad en desarrollo para el próximo sprint.');
+            console.log(' Funcionalidad en desarrollo para el próximo sprint.');
           } else {
             console.log('Opción inválida.');
           }
         } catch (err: any) {
-          console.error('\n❌', err.message);
+          console.error('\n', err.message);
         }
       }
     }
@@ -427,6 +433,84 @@ async function main() {
     rl.close();
     await pool.end();
     console.log('Aplicación finalizada.');
+  }
+
+  async function promptAdminActivities(
+    rl: readline.Interface,
+    activityService: ActivityService,
+    listAssignmentService: ListAssignmentService,
+    currentUser: UserSessionDTO
+  ) {
+    console.log('\n=== GESTIÓN DE ACTIVIDADES (PANEL ADMINISTRADOR) ===');
+    console.log('1. Listar actividades');
+    console.log('2. Crear nueva actividad');
+    const option = (await rl.question('Elegí una opción (1-2): ')).trim();
+
+    if (!['1', '2'].includes(option)) {
+      throw new Error('Opción inválida.');
+    }
+
+    if (option === '1') {
+      const activities = await activityService.listAll(currentUser);
+      if (activities.length === 0) {
+        console.log('  (no hay actividades cargadas)');
+        return;
+      }
+
+      activities.forEach((a) =>
+        console.log(
+          `  [ID: ${a.id}] ${a.name} | Días: ${a.days.join(', ')} | ${a.startTime}-${a.endTime} | Instructor ID: ${a.instructorId} | Estado: ${a.status}`
+        )
+      );
+
+      return;
+    }
+
+    const name = (await rl.question('Nombre de la actividad (ej. Funcional, Spinning): ')).trim();
+    const daysInput = (
+      await rl.question('Días separados por coma (ej. LUNES,MIERCOLES,VIERNES): ')
+    ).trim();
+    const days = daysInput
+      .split(',')
+      .map((d) => d.trim().toUpperCase() as DayOfWeek)
+      .filter(Boolean);
+
+    const startTime = (await rl.question('Hora de inicio (HH:MM): ')).trim();
+    const endTime = (await rl.question('Hora de fin (HH:MM): ')).trim();
+
+    const instructors = await listAssignmentService.listActiveInstructors(currentUser);
+    if (instructors.length === 0) {
+      throw new Error('No hay instructores activos para asignar.');
+    }
+
+    console.log('\nInstructores disponibles:');
+    instructors.forEach((i) =>
+      console.log(`  [${i.professionalId}] ${i.name} ${i.lastname} - ${i.specialtyOrTitle}`)
+    );
+
+    const instructorId = Number((await rl.question('ID del instructor a cargo: ')).trim());
+    if (!instructors.some((i) => i.professionalId === instructorId)) {
+      throw new Error('ID de instructor inválido.');
+    }
+
+    const statusInput = (
+      await rl.question('Estado (1 = ACTIVO, 2 = INACTIVO) [Enter = ACTIVO]: ')
+    ).trim();
+    const status: ActivityStatus = statusInput === '2' ? 'INACTIVO' : 'ACTIVO';
+
+    const res = await activityService.create(currentUser, {
+      name,
+      days,
+      startTime,
+      endTime,
+      instructorId,
+      status,
+    });
+
+    const act = res.activity;
+    console.log(
+      `\n✅ ${res.message} (ID: ${act.id} | ${act.name} | ${act.days.join(', ')} ${act.startTime}-${act.endTime} | ${act.status})`
+    );
   }
 }
 

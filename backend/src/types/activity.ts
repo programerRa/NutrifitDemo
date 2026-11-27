@@ -1,4 +1,4 @@
-export type DiaSemana =
+export type DayOfWeek =
     | 'LUNES'
     | 'MARTES'
     | 'MIERCOLES'
@@ -7,23 +7,24 @@ export type DiaSemana =
     | 'SABADO'
     | 'DOMINGO';
 
-export type EstadoActividad = 'ACTIVO' | 'INACTIVO';
+export type ActivityStatus = 'ACTIVO' | 'INACTIVO';
 
-export interface Actividad {
+export interface ActivityDTO {
     id: number;
-    nombre: string;
-    dias: DiaSemana[];
-    hora_inicio: string; // Formato 'HH:MM' o 'HH:MM:SS'
-    hora_fin: string;    // Formato 'HH:MM' o 'HH:MM:SS'
-    instructor_id: number;
-    estado: EstadoActividad;
+    name: string;
+    days: DayOfWeek[];
+    startTime: string;
+    endTime: string;
+    instructorId: number;
+    instructorName?: string;
+    status: ActivityStatus;
 }
 
-export interface CrearActividadDTO {
-    nombre: string;
-    dias: DiaSemana[];
-    hora_inicio: string;
-    hora_fin: string;
-    instructor_id: number;
-    estado?: EstadoActividad;
+export interface CreateActivityRequestDTO {
+    name: string;
+    days: DayOfWeek[];
+    startTime: string;
+    endTime: string;
+    instructorId: number;
+    status?: ActivityStatus;
 }
